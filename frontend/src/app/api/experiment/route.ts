@@ -23,6 +23,7 @@ type ExperimentConfig = {
     model: string;
     promptTemplate: 'baseline' | 'cot';
     temperature: number;
+    reasoningEffort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
     perturbations: {
         adversarialText: boolean;
         labelNoise: number; // percentage 0-100
@@ -60,7 +61,17 @@ export async function POST(req: Request) {
 }
 
 async function evaluateQuestion(q: Question, config: ExperimentConfig) {
-    const { model, promptTemplate, temperature, perturbations } = config;
+    const { model, promptTemplate, temperature, perturbations, reasoningEffort } = config;
+    const isGpt52ThinkingModel = model === 'gpt-5.2' || model === 'gpt-5.2-pro';
+    const isGpt52InstantModel = model === 'gpt-5.2-chat-latest';
+    const normalizedEffort = reasoningEffort ?? 'medium';
+    const resolvedEffort =
+        normalizedEffort === 'none' ? 'low' :
+            normalizedEffort === 'xhigh' ? 'high' :
+                normalizedEffort;
+    const effort = (resolvedEffort === 'low' || resolvedEffort === 'medium' || resolvedEffort === 'high')
+        ? resolvedEffort
+        : 'medium';
 
     let questionText = q.question;
 
@@ -85,7 +96,7 @@ async function evaluateQuestion(q: Question, config: ExperimentConfig) {
     }
 
     // Call LLM
-    const isResponsesAPI = model === 'gpt-5-mini' || model === 'gpt-5-nano';
+    const isResponsesAPI = model === 'gpt-5-mini' || model === 'gpt-5-nano' || isGpt52ThinkingModel || isGpt52InstantModel;
     let output = "";
 
     if (isResponsesAPI) {
@@ -99,7 +110,7 @@ async function evaluateQuestion(q: Question, config: ExperimentConfig) {
                 verbosity: 'medium'
             },
             reasoning: {
-                effort: 'medium',
+                effort: isGpt52ThinkingModel ? effort : 'medium',
                 summary: 'auto'
             },
             tools: [],

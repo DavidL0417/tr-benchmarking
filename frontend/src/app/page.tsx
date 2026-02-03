@@ -14,6 +14,7 @@ export default function Home() {
         model: 'gpt-4o-mini', // Default to cheaper model
         promptTemplate: 'baseline',
         temperature: 0.2,
+        reasoningEffort: 'medium',
         perturbations: {
             adversarialText: false,
             labelNoise: 0

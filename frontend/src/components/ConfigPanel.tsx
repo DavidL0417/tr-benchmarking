@@ -5,6 +5,7 @@ export type ExperimentConfig = {
     model: string;
     promptTemplate: 'baseline' | 'cot';
     temperature: number;
+    reasoningEffort: 'none' | 'low' | 'medium' | 'high' | 'xhigh';
     perturbations: {
         adversarialText: boolean;
         labelNoise: number;
@@ -37,6 +38,15 @@ export function ConfigPanel({ config, setConfig, onRun, isLoading, subjects }: C
         }));
     };
 
+    const supportsGpt52Thinking = config.model === 'gpt-5.2' || config.model === 'gpt-5.2-pro';
+    const thinkingModes: Array<{ value: ExperimentConfig['reasoningEffort']; label: string }> = [
+        { value: 'none', label: 'None' },
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'X-High' }
+    ];
+
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-6 h-full">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -51,16 +61,38 @@ export function ConfigPanel({ config, setConfig, onRun, isLoading, subjects }: C
                     value={config.model}
                     onChange={(e) => handleChange('model', e.target.value)}
                 >
-                    <option value="gpt-4o">GPT-4o</option>
-                    <option value="gpt-4o-mini">GPT-4o Mini</option>
-                    <option value="gpt-5.2">GPT-5.2</option>
+                    <option value="gpt-5.2">GPT-5.2 (Thinking)</option>
+                    <option value="gpt-5.2-pro">GPT-5.2 Pro (Thinking)</option>
+                    <option value="gpt-5.2-chat-latest">GPT-5.2 Instant</option>
                     <option value="gpt-5-mini">GPT-5 Mini</option>
                     <option value="gpt-5-nano">GPT-5 Nano</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="gpt-4o-mini">GPT-4o Mini</option>
+                    <option value="gpt-4.1">GPT-4.1</option>
                     <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+                    <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
                     <option value="o3">o3</option>
                     <option value="o4-mini">o4-mini</option>
                 </select>
             </div>
+
+            {supportsGpt52Thinking && (
+                <div className="space-y-2">
+                    <label className="text-sm font-semibold text-gray-500 uppercase tracking-wider">GPT-5.2 Thinking</label>
+                    <div className="grid grid-cols-5 gap-2">
+                        {thinkingModes.map(mode => (
+                            <button
+                                key={mode.value}
+                                className={`p-2 rounded-lg text-xs font-semibold transition-colors ${config.reasoningEffort === mode.value ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                                onClick={() => handleChange('reasoningEffort', mode.value)}
+                                type="button"
+                            >
+                                {mode.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Prompt Template */}
             <div className="space-y-2">
