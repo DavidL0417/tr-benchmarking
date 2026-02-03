@@ -120,7 +120,8 @@ async function evaluateQuestion(q: Question, config: ExperimentConfig) {
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userContent }
             ],
-            temperature: (model.startsWith('o') && model !== 'o4-mini') ? 1 : temperature,
+            // temperature: (model.startsWith('o') && model !== 'o4-mini') ? 1 : temperature,
+            temperature: temperature,
         });
         output = response.choices[0]?.message?.content || "";
     }
