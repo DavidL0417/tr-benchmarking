@@ -11,7 +11,7 @@ export default function Home() {
     const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
 
     const [config, setConfig] = useState<ExperimentConfig>({
-        model: 'gpt-4o-mini', // Default to cheaper model
+        model: 'gpt-4o-mini', // Default to cheapest model
         promptTemplate: 'baseline',
         temperature: 0.2,
         perturbations: {
@@ -102,9 +102,9 @@ export default function Home() {
             <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
                 <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <div className="bg-blue-600 p-2 rounded-lg text-white">
+                        {/* <div className="bg-blue-600 p-2 rounded-lg text-white">
                             <SquareChevronDown size={18} />
-                        </div>
+                        </div> */}
                         <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-blue-700 to-indigo-600 bg-clip-text text-transparent">
                             BenchmarkDemo <span className="font-light text-gray-400">AI Evaluator</span>
                         </h1>
