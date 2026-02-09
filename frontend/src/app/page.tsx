@@ -4,16 +4,52 @@
 import { useEffect, useState } from 'react';
 import { ConfigPanel, ExperimentConfig } from '@/components/ConfigPanel';
 import { ResultsDashboard } from '@/components/ResultsDashboard';
-import { SquareChevronDown } from 'lucide-react';
+
+type DatasetQuestion = {
+    id: string;
+    subfield?: string;
+    discipline?: string;
+    difficulty?: string;
+};
+
+type ExperimentSummary = {
+    total: number;
+    correct: number;
+    accuracy: number;
+    benchmarkProfile?: 'legacy' | 'controlled';
+    splitSummary?: Record<string, { total: number; correct: number; accuracy: number }>;
+};
+
+type ExperimentResult = {
+    questionId: string;
+    originalQuestion: string;
+    modelOutput: string;
+    parsedChoice: string;
+    groundTruth: string;
+    originalGroundTruth: string;
+    isCorrect: boolean;
+    isPerturbed: boolean;
+    questionText: string;
+    benchmarkProfile?: 'legacy' | 'controlled';
+    evaluationArm?: 'single' | 'deterministic' | 'stochastic';
+    parseMethod?: string;
+    isSchemaCompliant?: boolean;
+    temperatureUsed?: number;
+    temperatureApplied?: boolean;
+};
 
 export default function Home() {
     const [subjects, setSubjects] = useState<string[]>([]);
-    const [isLoadingSubjects, setIsLoadingSubjects] = useState(true);
 
     const [config, setConfig] = useState<ExperimentConfig>({
         model: 'gpt-4o-mini', // Default to cheapest model
         promptTemplate: 'baseline',
         temperature: 0.2,
+        benchmarkProfile: 'legacy',
+        controlled: {
+            deterministicSplit: true,
+            stochasticTemperature: 0.7
+        },
         perturbations: {
             adversarialText: false,
             labelNoise: 0
@@ -24,24 +60,28 @@ export default function Home() {
     });
 
     const [isRunning, setIsRunning] = useState(false);
-    const [results, setResults] = useState<any[]>([]);
-    const [summary, setSummary] = useState<any>(null);
+    const [results, setResults] = useState<ExperimentResult[]>([]);
+    const [summary, setSummary] = useState<ExperimentSummary | null>(null);
 
     // Load initial data to populate filters
     useEffect(() => {
         async function loadData() {
             try {
                 const res = await fetch('/api/dataset');
-                const json = await res.json();
+                const json = (await res.json()) as { data?: DatasetQuestion[] };
                 if (json.data) {
                     // Extract unique subfields
-                    const uniqueSubjects = Array.from(new Set(json.data.map((d: any) => d.subfield || d.discipline))).sort() as string[];
+                    const uniqueSubjects = Array.from(
+                        new Set(
+                            json.data
+                                .map((d) => d.subfield || d.discipline)
+                                .filter((value): value is string => Boolean(value))
+                        )
+                    ).sort();
                     setSubjects(uniqueSubjects);
                 }
             } catch (e) {
                 console.error("Failed to load dataset", e);
-            } finally {
-                setIsLoadingSubjects(false);
             }
         }
         loadData();
@@ -55,20 +95,23 @@ export default function Home() {
         try {
             // 1. Fetch filtered data first
             const dataRes = await fetch('/api/dataset');
-            const dataJson = await dataRes.json();
+            const dataJson = (await dataRes.json()) as { data?: DatasetQuestion[] };
 
-            let filtered = dataJson.data || [];
+            let filtered: DatasetQuestion[] = dataJson.data || [];
 
             // Filter logic (Client side for now, could be server side)
             if (config.subject !== 'All') {
-                filtered = filtered.filter((q: any) => (q.subfield === config.subject) || (q.discipline === config.subject));
+                filtered = filtered.filter((q) => (q.subfield === config.subject) || (q.discipline === config.subject));
             }
             if (config.difficulty !== 'All') {
-                filtered = filtered.filter((q: any) => q.difficulty === config.difficulty);
+                filtered = filtered.filter((q) => q.difficulty === config.difficulty);
             }
 
-            // Randomize
-            filtered = filtered.sort(() => 0.5 - Math.random());
+            if (config.benchmarkProfile === 'controlled') {
+                filtered = [...filtered].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+            } else {
+                filtered = filtered.sort(() => 0.5 - Math.random());
+            }
 
             // Limit
             const sample = filtered.slice(0, config.limit);
@@ -83,8 +126,8 @@ export default function Home() {
                 })
             });
 
-            const json = await res.json();
-            if (json.results) {
+            const json = (await res.json()) as { results?: ExperimentResult[]; summary?: ExperimentSummary };
+            if (json.results && json.summary) {
                 setResults(json.results);
                 setSummary(json.summary);
             }

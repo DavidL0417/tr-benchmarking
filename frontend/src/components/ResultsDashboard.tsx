@@ -1,7 +1,6 @@
 
 import React, { useState } from 'react';
-import { clsx } from 'clsx';
-import { CheckCircle2, XCircle, AlertTriangle, Search, BarChart3, List } from 'lucide-react';
+import { CheckCircle2, XCircle, Search, BarChart3, List } from 'lucide-react';
 import { QuestionDetailModal } from './QuestionDetailModal';
 
 type ResultItem = {
@@ -14,13 +13,27 @@ type ResultItem = {
     isCorrect: boolean;
     isPerturbed: boolean;
     questionText: string;
+    benchmarkProfile?: 'legacy' | 'controlled';
+    evaluationArm?: 'single' | 'deterministic' | 'stochastic';
+    parseMethod?: string;
+    isSchemaCompliant?: boolean;
+    temperatureUsed?: number;
+    temperatureApplied?: boolean;
+};
+
+type SplitSummary = {
+    total: number;
+    correct: number;
+    accuracy: number;
 };
 
 type ExperimentSummary = {
     total: number;
     correct: number;
     accuracy: number;
-}
+    benchmarkProfile?: 'legacy' | 'controlled';
+    splitSummary?: Record<string, SplitSummary>;
+};
 
 interface ResultsDashboardProps {
     results: ResultItem[];
@@ -30,6 +43,7 @@ interface ResultsDashboardProps {
 export function ResultsDashboard({ results, summary }: ResultsDashboardProps) {
     const [selectedQuestion, setSelectedQuestion] = useState<ResultItem | null>(null);
     const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+    const splitEntries = Object.entries(summary?.splitSummary || {});
 
     if (!summary) {
         return (
@@ -44,7 +58,7 @@ export function ResultsDashboard({ results, summary }: ResultsDashboardProps) {
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Top Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
                     <p className="text-sm text-gray-500 font-medium uppercase">Accuracy</p>
                     <div className="flex items-baseline gap-2 mt-1">
@@ -61,7 +75,28 @@ export function ResultsDashboard({ results, summary }: ResultsDashboardProps) {
                     <p className="text-sm text-gray-500 font-medium uppercase">Correct / Total</p>
                     <p className="text-3xl font-bold text-gray-800 mt-1">{summary.correct} <span className="text-lg text-gray-400 font-normal">/ {summary.total}</span></p>
                 </div>
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                    <p className="text-sm text-gray-500 font-medium uppercase">Benchmark Profile</p>
+                    <p className="text-2xl font-bold text-gray-800 mt-1">
+                        {summary.benchmarkProfile === 'controlled' ? 'Controlled' : 'Legacy'}
+                    </p>
+                </div>
             </div>
+
+            {splitEntries.length > 0 && (
+                <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100">
+                    <p className="text-sm text-gray-500 font-medium uppercase mb-3">Determinism Split</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {splitEntries.map(([arm, armSummary]) => (
+                            <div key={arm} className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                                <p className="text-xs uppercase font-semibold text-gray-500">{arm}</p>
+                                <p className="text-xl font-bold text-gray-800 mt-1">{(armSummary.accuracy * 100).toFixed(1)}%</p>
+                                <p className="text-sm text-gray-500">{armSummary.correct} / {armSummary.total}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Main Content Area */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-[600px]">
@@ -87,6 +122,7 @@ export function ResultsDashboard({ results, summary }: ResultsDashboardProps) {
                                 <tr>
                                     <th className="p-4 w-16">Status</th>
                                     <th className="p-4">Question ID</th>
+                                    <th className="p-4">Run</th>
                                     <th className="p-4">Model Output</th>
                                     <th className="p-4">Expected</th>
                                     <th className="p-4 w-20">Details</th>
@@ -104,6 +140,11 @@ export function ResultsDashboard({ results, summary }: ResultsDashboardProps) {
                                         <td className="p-4 font-mono text-gray-500 text-xs truncate max-w-[150px]" title={r.questionId}>
                                             {r.questionId.substring(0, 8)}...
                                             {r.isPerturbed && <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Adv</span>}
+                                        </td>
+                                        <td className="p-4">
+                                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-blue-50 text-blue-700">
+                                                {r.evaluationArm || 'single'}
+                                            </span>
                                         </td>
                                         <td className="p-4 font-medium">
                                             <span className={`px-2 py-1 rounded text-xs font-bold ${r.isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>

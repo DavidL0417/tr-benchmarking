@@ -5,6 +5,11 @@ export type ExperimentConfig = {
     model: string;
     promptTemplate: 'baseline' | 'cot';
     temperature: number;
+    benchmarkProfile: 'legacy' | 'controlled';
+    controlled: {
+        deterministicSplit: boolean;
+        stochasticTemperature: number;
+    };
     perturbations: {
         adversarialText: boolean;
         labelNoise: number;
@@ -23,11 +28,16 @@ interface ConfigPanelProps {
 }
 
 export function ConfigPanel({ config, setConfig, onRun, isLoading, subjects }: ConfigPanelProps) {
-    const handleChange = (field: keyof ExperimentConfig, value: any) => {
+    const isControlled = config.benchmarkProfile === 'controlled';
+
+    const handleChange = <K extends keyof ExperimentConfig>(field: K, value: ExperimentConfig[K]) => {
         setConfig(prev => ({ ...prev, [field]: value }));
     };
 
-    const handlePerturbationChange = (field: keyof ExperimentConfig['perturbations'], value: any) => {
+    const handlePerturbationChange = <K extends keyof ExperimentConfig['perturbations']>(
+        field: K,
+        value: ExperimentConfig['perturbations'][K]
+    ) => {
         setConfig(prev => ({
             ...prev,
             perturbations: {
@@ -35,6 +45,36 @@ export function ConfigPanel({ config, setConfig, onRun, isLoading, subjects }: C
                 [field]: value
             }
         }));
+    };
+
+    const handleControlledChange = <K extends keyof ExperimentConfig['controlled']>(
+        field: K,
+        value: ExperimentConfig['controlled'][K]
+    ) => {
+        setConfig(prev => ({
+            ...prev,
+            controlled: {
+                ...prev.controlled,
+                [field]: value
+            }
+        }));
+    };
+
+    const handleBenchmarkProfileChange = (profile: ExperimentConfig['benchmarkProfile']) => {
+        if (profile === 'controlled') {
+            setConfig(prev => ({
+                ...prev,
+                benchmarkProfile: 'controlled',
+                promptTemplate: 'baseline',
+                temperature: 0,
+                perturbations: {
+                    adversarialText: false,
+                    labelNoise: 0
+                }
+            }));
+            return;
+        }
+        handleChange('benchmarkProfile', profile);
     };
 
     return (
@@ -62,6 +102,29 @@ export function ConfigPanel({ config, setConfig, onRun, isLoading, subjects }: C
                 </select>
             </div>
 
+            <div className="space-y-2">
+                <label className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Benchmark Mode</label>
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        className={`p-2 rounded-lg text-sm font-medium transition-colors ${config.benchmarkProfile === 'legacy' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        onClick={() => handleBenchmarkProfileChange('legacy')}
+                    >
+                        Legacy
+                    </button>
+                    <button
+                        className={`p-2 rounded-lg text-sm font-medium transition-colors ${config.benchmarkProfile === 'controlled' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        onClick={() => handleBenchmarkProfileChange('controlled')}
+                    >
+                        Controlled
+                    </button>
+                </div>
+                {isControlled && (
+                    <p className="text-xs text-gray-500">
+                        Standardized prompt scaffolding and parsing are enforced; perturbations are disabled.
+                    </p>
+                )}
+            </div>
+
             {/* Prompt Template */}
             <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Prompt Template</label>
@@ -69,16 +132,19 @@ export function ConfigPanel({ config, setConfig, onRun, isLoading, subjects }: C
                     <button
                         className={`p-2 rounded-lg text-sm font-medium transition-colors ${config.promptTemplate === 'baseline' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                         onClick={() => handleChange('promptTemplate', 'baseline')}
+                        disabled={isControlled}
                     >
                         Baseline
                     </button>
                     <button
                         className={`p-2 rounded-lg text-sm font-medium transition-colors ${config.promptTemplate === 'cot' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                         onClick={() => handleChange('promptTemplate', 'cot')}
+                        disabled={isControlled}
                     >
                         Chain of Thought
                     </button>
                 </div>
+                {isControlled && <p className="text-xs text-gray-500">Locked to a single standardized prompt.</p>}
             </div>
 
             {/* Temperature */}
@@ -92,10 +158,43 @@ export function ConfigPanel({ config, setConfig, onRun, isLoading, subjects }: C
                     className="w-full accent-blue-600"
                     value={config.temperature}
                     onChange={(e) => handleChange('temperature', parseFloat(e.target.value))}
+                    disabled={isControlled}
                 />
+                {isControlled && <p className="text-xs text-gray-500">Ignored in controlled mode.</p>}
             </div>
 
             <hr className="border-gray-100" />
+
+            {isControlled && (
+                <div className="space-y-4">
+                    <label className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Determinism Split</label>
+                    <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-700">Run deterministic + stochastic arms</span>
+                        <input
+                            type="checkbox"
+                            className="w-5 h-5 accent-blue-600"
+                            checked={config.controlled.deterministicSplit}
+                            onChange={(e) => handleControlledChange('deterministicSplit', e.target.checked)}
+                        />
+                    </div>
+                    <div className="space-y-2">
+                        <div className="flex justify-between">
+                            <span className="text-sm text-gray-700">Stochastic Arm Temperature</span>
+                            <span className="text-sm font-bold text-blue-600">{config.controlled.stochasticTemperature.toFixed(1)}</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0.1" max="1" step="0.1"
+                            className="w-full accent-blue-600"
+                            value={config.controlled.stochasticTemperature}
+                            onChange={(e) => handleControlledChange('stochasticTemperature', parseFloat(e.target.value))}
+                            disabled={!config.controlled.deterministicSplit}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {isControlled && <hr className="border-gray-100" />}
 
             {/* Perturbations */}
             <div className="space-y-4">
@@ -108,6 +207,7 @@ export function ConfigPanel({ config, setConfig, onRun, isLoading, subjects }: C
                         className="w-5 h-5 accent-red-500"
                         checked={config.perturbations.adversarialText}
                         onChange={(e) => handlePerturbationChange('adversarialText', e.target.checked)}
+                        disabled={isControlled}
                     />
                 </div>
 
@@ -122,6 +222,7 @@ export function ConfigPanel({ config, setConfig, onRun, isLoading, subjects }: C
                         className="w-full accent-red-500"
                         value={config.perturbations.labelNoise}
                         onChange={(e) => handlePerturbationChange('labelNoise', parseInt(e.target.value))}
+                        disabled={isControlled}
                     />
                 </div>
             </div>

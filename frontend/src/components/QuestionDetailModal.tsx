@@ -4,7 +4,20 @@ import { X, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 type QuestionDetailModalProps = {
-    data: any;
+    data: {
+        isCorrect: boolean;
+        parsedChoice: string;
+        groundTruth: string;
+        evaluationArm?: string;
+        parseMethod?: string;
+        isSchemaCompliant?: boolean;
+        temperatureUsed?: number;
+        temperatureApplied?: boolean;
+        isPerturbed: boolean;
+        questionText: string;
+        choices?: string[];
+        modelOutput: string;
+    };
     onClose: () => void;
 };
 
@@ -36,8 +49,18 @@ export function QuestionDetailModal({ data, onClose }: QuestionDetailModalProps)
                             <div className="ml-auto text-sm text-right">
                                 <div>Model Picked: <strong>{data.parsedChoice}</strong></div>
                                 <div>Correct: <strong>{data.groundTruth}</strong></div>
+                                {data.evaluationArm && <div>Run: <strong>{data.evaluationArm}</strong></div>}
                             </div>
                         </div>
+
+                        {(data.parseMethod || typeof data.isSchemaCompliant === 'boolean' || typeof data.temperatureUsed === 'number') && (
+                            <div className="p-3 bg-slate-50 text-slate-700 rounded-lg text-sm border border-slate-200 flex flex-wrap gap-x-4 gap-y-1">
+                                {data.parseMethod && <span>Parse: <strong>{data.parseMethod}</strong></span>}
+                                {typeof data.isSchemaCompliant === 'boolean' && <span>Schema: <strong>{data.isSchemaCompliant ? 'yes' : 'no'}</strong></span>}
+                                {typeof data.temperatureUsed === 'number' && <span>Temperature: <strong>{data.temperatureUsed}</strong></span>}
+                                {typeof data.temperatureApplied === 'boolean' && <span>Applied: <strong>{data.temperatureApplied ? 'yes' : 'no'}</strong></span>}
+                            </div>
+                        )}
 
                         {data.isPerturbed && (
                             <div className="p-3 bg-orange-50 text-orange-800 rounded-lg text-sm border border-orange-100 flex items-center gap-2">
