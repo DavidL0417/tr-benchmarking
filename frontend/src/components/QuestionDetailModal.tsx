@@ -4,13 +4,27 @@ import { X, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 type QuestionDetailModalProps = {
-    data: any;
+    data: {
+        model?: string;
+        isCorrect: boolean;
+        parsedChoice: string;
+        groundTruth: string;
+        evaluationArm?: string;
+        parseMethod?: string;
+        isSchemaCompliant?: boolean;
+        temperatureUsed?: number;
+        temperatureApplied?: boolean;
+        apiTransport?: 'responses' | 'chat_completions';
+        isPerturbed: boolean;
+        questionText: string;
+        choices?: string[];
+        modelOutput: string;
+    };
     onClose: () => void;
 };
 
 export function QuestionDetailModal({ data, onClose }: QuestionDetailModalProps) {
     if (!data) return null;
-    const isPrbench = data.dataset === 'prbench';
 
     return (
         <AnimatePresence>
@@ -29,130 +43,62 @@ export function QuestionDetailModal({ data, onClose }: QuestionDetailModalProps)
                     </div>
 
                     <div className="p-6 overflow-y-auto space-y-6">
-                        {isPrbench ? (
-                            <>
-                                <div className="p-4 rounded-lg flex items-start gap-3 bg-indigo-50 text-indigo-900 border border-indigo-100">
-                                    <div className="mt-0.5 font-bold text-lg">
-                                        Judge Score: {data.judge?.overallScore ?? '--'} / 100
-                                    </div>
-                                    <div className="ml-auto text-sm text-right text-indigo-700">
-                                        <div>{data.topic || data.field || 'General'}</div>
-                                    </div>
-                                </div>
+                        {/* Status Banner */}
+                        <div className={`p-4 rounded-lg flex items-start gap-3 ${data.isCorrect ? 'bg-green-50 text-green-800 border border-green-100' : 'bg-red-50 text-red-800 border border-red-100'}`}>
+                            <div className="mt-0.5 font-bold text-lg">
+                                {data.isCorrect ? 'Correct Answer' : 'Incorrect Answer'}
+                            </div>
+                            <div className="ml-auto text-sm text-right">
+                                {data.model && <div>Model: <strong>{data.model}</strong></div>}
+                                <div>Model Picked: <strong>{data.parsedChoice}</strong></div>
+                                <div>Correct: <strong>{data.groundTruth}</strong></div>
+                                {data.evaluationArm && <div>Run: <strong>{data.evaluationArm}</strong></div>}
+                            </div>
+                        </div>
 
-                                {data.isPerturbed && (
-                                    <div className="p-3 bg-orange-50 text-orange-800 rounded-lg text-sm border border-orange-100 flex items-center gap-2">
-                                        <AlertTriangle size={16} />
-                                        <strong>Adversarial Perturbation Applied:</strong> The final user prompt was modified for robustness testing.
-                                    </div>
-                                )}
-
-                                <div className="space-y-2">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Conversation</h4>
-                                    <div className="space-y-3">
-                                        {data.conversation?.map((message: any, index: number) => (
-                                            <div
-                                                key={index}
-                                                className={`p-3 rounded-lg border text-sm whitespace-pre-wrap ${message.role === 'assistant' ? 'bg-slate-50 border-slate-200' : 'bg-white border-gray-200'}`}
-                                            >
-                                                <div className="text-xs font-semibold uppercase text-gray-400 mb-1">
-                                                    {message.role === 'assistant' ? 'Assistant' : 'User'}
-                                                </div>
-                                                <div className="text-gray-700">{message.content}</div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Model Answer</h4>
-                                    <div className="bg-slate-900 text-slate-50 p-4 rounded-lg font-mono text-xs whitespace-pre-wrap shadow-inner overflow-x-auto">
-                                        {data.modelAnswer}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Judge Output</h4>
-                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm space-y-2">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Overall Score</span>
-                                            <span className="font-semibold text-gray-800">{data.judge?.overallScore ?? '--'}</span>
-                                        </div>
-                                        {data.judge?.summary && (
-                                            <div className="text-gray-700">{data.judge.summary}</div>
-                                        )}
-                                        <div className="text-gray-600">
-                                            Issues: {data.judge?.issues?.length ? data.judge.issues.join(' • ') : 'None'}
-                                        </div>
-                                        {data.judge?.subscores && Object.keys(data.judge.subscores).length > 0 && (
-                                            <div className="space-y-1 text-xs text-gray-500">
-                                                {Object.entries(data.judge.subscores).map(([key, value]: [string, number]) => (
-                                                    <div key={key} className="flex justify-between">
-                                                        <span>{key}</span>
-                                                        <span className="font-semibold text-gray-700">{value.toFixed(1)}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {data.judge?.parseFailed && (
-                                    <div className="space-y-2">
-                                        <h4 className="text-xs font-bold text-orange-500 uppercase tracking-wider">Judge Raw Output (Parse Failed)</h4>
-                                        <div className="bg-slate-900 text-slate-50 p-4 rounded-lg font-mono text-xs whitespace-pre-wrap shadow-inner overflow-x-auto">
-                                            {data.judge?.rawOutput}
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <>
-                                <div className={`p-4 rounded-lg flex items-start gap-3 ${data.isCorrect ? 'bg-green-50 text-green-800 border border-green-100' : 'bg-red-50 text-red-800 border border-red-100'}`}>
-                                    <div className="mt-0.5 font-bold text-lg">
-                                        {data.isCorrect ? 'Correct Answer' : 'Incorrect Answer'}
-                                    </div>
-                                    <div className="ml-auto text-sm text-right">
-                                        <div>Model Picked: <strong>{data.parsedChoice}</strong></div>
-                                        <div>Correct: <strong>{data.groundTruth}</strong></div>
-                                    </div>
-                                </div>
-
-                                {data.isPerturbed && (
-                                    <div className="p-3 bg-orange-50 text-orange-800 rounded-lg text-sm border border-orange-100 flex items-center gap-2">
-                                        <AlertTriangle size={16} />
-                                        <strong>Adversarial Perturbation Applied:</strong> The input text was modified to test robustness.
-                                    </div>
-                                )}
-
-                                <div className="space-y-2">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Input Prompt</h4>
-                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 font-mono text-sm whitespace-pre-wrap text-gray-700">
-                                        {data.questionText}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Answer Choices</h4>
-                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm space-y-1">
-                                        {data.choices && data.choices.map((choice: string, i: number) => (
-                                            <div key={i} className={`flex gap-2 ${String.fromCharCode(65 + i) === data.groundTruth ? 'font-bold text-green-700' : 'text-gray-700'}`}>
-                                                <span className="w-6 shrink-0">{String.fromCharCode(65 + i)}.</span>
-                                                <span>{choice}</span>
-                                                {String.fromCharCode(65 + i) === data.groundTruth && <span className="ml-2 text-xs bg-green-100 text-green-800 px-1 rounded">Correct</span>}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Model Raw Output</h4>
-                                    <div className="bg-slate-900 text-slate-50 p-4 rounded-lg font-mono text-xs whitespace-pre-wrap shadow-inner overflow-x-auto">
-                                        {data.modelOutput}
-                                    </div>
-                                </div>
-                            </>
+                        {(data.parseMethod || typeof data.isSchemaCompliant === 'boolean' || typeof data.temperatureUsed === 'number') && (
+                            <div className="p-3 bg-slate-50 text-slate-700 rounded-lg text-sm border border-slate-200 flex flex-wrap gap-x-4 gap-y-1">
+                                {data.parseMethod && <span>Parse: <strong>{data.parseMethod}</strong></span>}
+                                {typeof data.isSchemaCompliant === 'boolean' && <span>Schema: <strong>{data.isSchemaCompliant ? 'yes' : 'no'}</strong></span>}
+                                {typeof data.temperatureUsed === 'number' && <span>Temperature: <strong>{data.temperatureUsed}</strong></span>}
+                                {typeof data.temperatureApplied === 'boolean' && <span>Applied: <strong>{data.temperatureApplied ? 'yes' : 'no'}</strong></span>}
+                                {data.apiTransport && <span>Transport: <strong>{data.apiTransport}</strong></span>}
+                            </div>
                         )}
+
+                        {data.isPerturbed && (
+                            <div className="p-3 bg-orange-50 text-orange-800 rounded-lg text-sm border border-orange-100 flex items-center gap-2">
+                                <AlertTriangle size={16} />
+                                <strong>Adversarial Perturbation Applied:</strong> The input text was modified to test robustness.
+                            </div>
+                        )}
+
+                        <div className="space-y-2">
+                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Input Prompt</h4>
+                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 font-mono text-sm whitespace-pre-wrap text-gray-700">
+                                {data.questionText}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Answer Choices</h4>
+                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm space-y-1">
+                                {data.choices && data.choices.map((choice: string, i: number) => (
+                                    <div key={i} className={`flex gap-2 ${String.fromCharCode(65 + i) === data.groundTruth ? 'font-bold text-green-700' : 'text-gray-700'}`}>
+                                        <span className="w-6 shrink-0">{String.fromCharCode(65 + i)}.</span>
+                                        <span>{choice}</span>
+                                        {String.fromCharCode(65 + i) === data.groundTruth && <span className="ml-2 text-xs bg-green-100 text-green-800 px-1 rounded">Correct</span>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Model Raw Output</h4>
+                            <div className="bg-slate-900 text-slate-50 p-4 rounded-lg font-mono text-xs whitespace-pre-wrap shadow-inner overflow-x-auto">
+                                {data.modelOutput}
+                            </div>
+                        </div>
                     </div>
                 </motion.div>
             </div>
