@@ -9,6 +9,8 @@ type QuestionDetailModalProps = {
         isCorrect: boolean;
         parsedChoice: string;
         groundTruth: string;
+        variantType?: 'baseline' | 'shuffle' | 'normalize' | 'irrelevant';
+        variantIndex?: number;
         evaluationArm?: string;
         parseMethod?: string;
         isSchemaCompliant?: boolean;
@@ -20,10 +22,18 @@ type QuestionDetailModalProps = {
         choices?: string[];
         modelOutput: string;
     };
+    relatedVariants?: Array<{
+        evaluationArm?: string;
+        variantType: 'baseline' | 'shuffle' | 'normalize' | 'irrelevant';
+        variantIndex: number;
+        parsedChoice: string;
+        isCorrect: boolean;
+        didFlip: boolean | null;
+    }>;
     onClose: () => void;
 };
 
-export function QuestionDetailModal({ data, onClose }: QuestionDetailModalProps) {
+export function QuestionDetailModal({ data, relatedVariants = [], onClose }: QuestionDetailModalProps) {
     if (!data) return null;
 
     return (
@@ -53,6 +63,7 @@ export function QuestionDetailModal({ data, onClose }: QuestionDetailModalProps)
                                 <div>Model Picked: <strong>{data.parsedChoice}</strong></div>
                                 <div>Correct: <strong>{data.groundTruth}</strong></div>
                                 {data.evaluationArm && <div>Run: <strong>{data.evaluationArm}</strong></div>}
+                                {data.variantType && <div>Variant: <strong>{data.variantType}</strong>{typeof data.variantIndex === 'number' ? ` #${data.variantIndex}` : ''}</div>}
                             </div>
                         </div>
 
@@ -99,6 +110,44 @@ export function QuestionDetailModal({ data, onClose }: QuestionDetailModalProps)
                                 {data.modelOutput}
                             </div>
                         </div>
+
+                        {relatedVariants.length > 0 && (
+                            <div className="space-y-2">
+                                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Variants</h4>
+                                <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                                    <table className="w-full text-left text-xs">
+                                        <thead className="bg-gray-50 text-gray-500 uppercase tracking-wider">
+                                            <tr>
+                                                <th className="p-2">Run</th>
+                                                <th className="p-2">Type</th>
+                                                <th className="p-2">Index</th>
+                                                <th className="p-2">Parsed</th>
+                                                <th className="p-2">Correct</th>
+                                                <th className="p-2">Did Flip</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {relatedVariants.map((variant) => (
+                                                <tr key={`${variant.evaluationArm || 'single'}-${variant.variantType}-${variant.variantIndex}`}>
+                                                    <td className="p-2">{variant.evaluationArm || 'single'}</td>
+                                                    <td className="p-2">{variant.variantType}</td>
+                                                    <td className="p-2">{variant.variantIndex}</td>
+                                                    <td className="p-2">{variant.parsedChoice}</td>
+                                                    <td className="p-2">{variant.isCorrect ? 'Yes' : 'No'}</td>
+                                                    <td className="p-2">
+                                                        {variant.variantType === 'baseline'
+                                                            ? '--'
+                                                            : typeof variant.didFlip === 'boolean'
+                                                                ? (variant.didFlip ? 'Yes' : 'No')
+                                                                : 'n/a'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </motion.div>
             </div>

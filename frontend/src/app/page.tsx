@@ -6,7 +6,7 @@ import { ConfigPanel as MainConfigPanel, ExperimentConfig as MainExperimentConfi
 import { ResultsDashboard as ForcedResultsDashboard } from '@/components/ResultsDashboard';
 import { ResultsDashboard as MainResultsDashboard } from '@/components/ResultsDashboardMain';
 
-type SuiteMode = 'main' | 'forced_tests';
+type SuiteMode = 'main' | 'forced_tests' | 'variance_testing';
 
 type DatasetRow = {
     id: string;
@@ -59,6 +59,13 @@ export default function Home() {
             adversarialText: false,
             labelNoise: 0,
         },
+        invariance: {
+            enabled: true,
+            optionShuffles: 3,
+            normalizeFormatting: false,
+            addIrrelevantContext: false,
+            seed: 42,
+        },
         judgePrompt: '',
         limit: 5,
         subject: 'All',
@@ -85,6 +92,13 @@ export default function Home() {
             adversarialText: false,
             labelNoise: 0,
         },
+        invariance: {
+            enabled: true,
+            optionShuffles: 3,
+            normalizeFormatting: false,
+            addIrrelevantContext: false,
+            seed: 42,
+        },
         limit: 5,
         subject: 'All',
         difficulty: 'All',
@@ -109,9 +123,9 @@ export default function Home() {
     useEffect(() => {
         async function loadData() {
             try {
-                const endpoint = suiteMode === 'main'
-                    ? `/api/dataset-main?dataset=${mainConfig.dataset}`
-                    : '/api/dataset';
+                const endpoint = suiteMode === 'forced_tests'
+                    ? '/api/dataset'
+                    : `/api/dataset-main?dataset=${mainConfig.dataset}`;
                 const res = await fetch(endpoint);
                 const json = (await res.json()) as { data?: DatasetRow[] };
 
@@ -123,7 +137,7 @@ export default function Home() {
 
                 setDatasetRows(json.data);
 
-                const uniqueSubjects = suiteMode === 'main' && mainConfig.dataset === 'prbench'
+                const uniqueSubjects = suiteMode !== 'forced_tests' && mainConfig.dataset === 'prbench'
                     ? Array.from(new Set(json.data.map((d) => d.topic || d.field).filter((value): value is string => Boolean(value)))).sort()
                     : Array.from(new Set(json.data.map((d) => d.subfield || d.discipline).filter((value): value is string => Boolean(value)))).sort();
                 setSubjects(uniqueSubjects);
@@ -138,7 +152,7 @@ export default function Home() {
     }, [suiteMode, mainConfig.dataset]);
 
     const currentSelectionPreview = useMemo<SelectionPreview>(() => {
-        if (suiteMode === 'main') {
+        if (suiteMode === 'main' || suiteMode === 'variance_testing') {
             return buildMainSelectionPreview(datasetRows, mainConfig);
         }
         return buildForcedSelectionPreview(datasetRows, forcedConfig);
@@ -184,28 +198,48 @@ export default function Home() {
         setActiveRunId(entry.id);
 
         if (isMainConfig(entry.config)) {
+            const resolvedSampleSeed = typeof entry.config.sampleSeed === 'number' ? entry.config.sampleSeed : 42;
             setMainConfig({
                 ...entry.config,
                 perturbations: { ...entry.config.perturbations },
                 questionSelectionMode: entry.config.questionSelectionMode || 'auto',
                 autoSelectionOrder: entry.config.autoSelectionOrder || 'random',
-                sampleSeed: typeof entry.config.sampleSeed === 'number' ? entry.config.sampleSeed : 42,
+                sampleSeed: resolvedSampleSeed,
                 manualQuestionIds: entry.config.manualQuestionIds || '',
+                invariance: {
+                    enabled: entry.config.invariance?.enabled ?? true,
+                    optionShuffles: entry.config.invariance?.optionShuffles ?? 3,
+                    normalizeFormatting: entry.config.invariance?.normalizeFormatting ?? false,
+                    addIrrelevantContext: entry.config.invariance?.addIrrelevantContext ?? false,
+                    seed: entry.config.invariance?.seed ?? resolvedSampleSeed,
+                },
             });
         } else if (isForcedConfig(entry.config)) {
+            const resolvedSampleSeed = typeof entry.config.sampleSeed === 'number' ? entry.config.sampleSeed : 42;
             setForcedConfig({
                 ...entry.config,
                 controlled: { ...entry.config.controlled },
                 perturbations: { ...entry.config.perturbations },
                 questionSelectionMode: entry.config.questionSelectionMode || 'auto',
                 autoSelectionOrder: entry.config.autoSelectionOrder || 'ordered',
-                sampleSeed: typeof entry.config.sampleSeed === 'number' ? entry.config.sampleSeed : 42,
+                sampleSeed: resolvedSampleSeed,
                 manualQuestionIds: entry.config.manualQuestionIds || '',
+                invariance: {
+                    enabled: entry.config.invariance?.enabled ?? true,
+                    optionShuffles: entry.config.invariance?.optionShuffles ?? 3,
+                    normalizeFormatting: entry.config.invariance?.normalizeFormatting ?? false,
+                    addIrrelevantContext: entry.config.invariance?.addIrrelevantContext ?? false,
+                    seed: entry.config.invariance?.seed ?? resolvedSampleSeed,
+                },
             });
         }
     };
 
-    const runMainExperiment = async (signal: AbortSignal, configSnapshot: MainExperimentConfig) => {
+    const runMainExperiment = async (
+        signal: AbortSignal,
+        configSnapshot: MainExperimentConfig,
+        suiteLabel: Extract<SuiteMode, 'main' | 'variance_testing'>
+    ) => {
         setRunStatusText('Loading dataset...');
         const dataRes = await fetch(`/api/dataset-main?dataset=${configSnapshot.dataset}`, { signal });
         const dataJson = (await dataRes.json()) as { data?: DatasetRow[] };
@@ -235,7 +269,7 @@ export default function Home() {
             setResults(json.results);
             setSummary(json.summary);
             addRunToHistory({
-                suiteMode: 'main',
+                suiteMode: suiteLabel,
                 config: configSnapshot,
                 results: json.results,
                 summary: json.summary,
@@ -298,11 +332,13 @@ export default function Home() {
         const mainConfigSnapshot: MainExperimentConfig = {
             ...mainConfig,
             perturbations: { ...mainConfig.perturbations },
+            invariance: { ...mainConfig.invariance },
         };
         const forcedConfigSnapshot: ForcedExperimentConfig = {
             ...forcedConfig,
             controlled: { ...forcedConfig.controlled },
             perturbations: { ...forcedConfig.perturbations },
+            invariance: { ...forcedConfig.invariance },
         };
 
         const abortController = new AbortController();
@@ -313,8 +349,12 @@ export default function Home() {
         setActiveRunId(null);
 
         try {
-            if (currentSuiteMode === 'main') {
-                await runMainExperiment(abortController.signal, mainConfigSnapshot);
+            if (currentSuiteMode === 'main' || currentSuiteMode === 'variance_testing') {
+                await runMainExperiment(
+                    abortController.signal,
+                    mainConfigSnapshot,
+                    currentSuiteMode === 'variance_testing' ? 'variance_testing' : 'main'
+                );
             } else {
                 await runForcedExperiment(abortController.signal, forcedConfigSnapshot);
             }
@@ -357,9 +397,36 @@ export default function Home() {
                     adversarialText: false,
                     labelNoise: 0,
                 },
+                invariance: {
+                    enabled: true,
+                    optionShuffles: 3,
+                    normalizeFormatting: false,
+                    addIrrelevantContext: false,
+                    seed: prev.sampleSeed,
+                },
                 questionSelectionMode: 'auto',
                 autoSelectionOrder: 'ordered',
                 sampleSeed: prev.sampleSeed,
+                manualQuestionIds: '',
+            }));
+            return;
+        }
+
+        if (nextMode === 'variance_testing') {
+            setMainConfig((prev) => ({
+                ...prev,
+                dataset: 'supergpqa',
+                invariance: {
+                    enabled: true,
+                    optionShuffles: 3,
+                    normalizeFormatting: prev.invariance.normalizeFormatting,
+                    addIrrelevantContext: prev.invariance.addIrrelevantContext,
+                    seed: prev.sampleSeed,
+                },
+                questionSelectionMode: 'auto',
+                autoSelectionOrder: 'random',
+                subject: 'All',
+                difficulty: 'All',
                 manualQuestionIds: '',
             }));
         }
@@ -383,6 +450,7 @@ export default function Home() {
                                 onChange={(e) => handleSuiteChange(e.target.value as SuiteMode)}
                             >
                                 <option value="main">Main Branch</option>
+                                <option value="variance_testing">Variance Testing</option>
                                 <option value="forced_tests">Forced Tests</option>
                             </select>
                         </div>
@@ -394,6 +462,12 @@ export default function Home() {
                                     onClick={() => handleSuiteChange('main')}
                                 >
                                     Main Branch
+                                </button>
+                                <button
+                                    className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${suiteMode === 'variance_testing' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-200'}`}
+                                    onClick={() => handleSuiteChange('variance_testing')}
+                                >
+                                    Variance Testing
                                 </button>
                                 <button
                                     className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${suiteMode === 'forced_tests' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-200'}`}
@@ -412,7 +486,7 @@ export default function Home() {
 
             <div className="flex-1 max-w-[1600px] mx-auto w-full p-6 grid grid-cols-12 gap-8">
                 <div className="col-span-12 lg:col-span-3">
-                    {suiteMode === 'main' ? (
+                    {suiteMode === 'main' || suiteMode === 'variance_testing' ? (
                         <MainConfigPanel
                             config={mainConfig}
                             setConfig={setMainConfig}
@@ -473,7 +547,11 @@ export default function Home() {
                                         >
                                             <div className="flex items-center justify-between gap-4">
                                                 <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-                                                    {entry.suiteMode === 'main' ? 'Main Branch' : 'Forced Tests'}
+                                                    {entry.suiteMode === 'main'
+                                                        ? 'Main Branch'
+                                                        : entry.suiteMode === 'variance_testing'
+                                                            ? 'Variance Testing'
+                                                            : 'Forced Tests'}
                                                 </span>
                                                 <span className="text-xs text-gray-500">{formatHistoryTimestamp(entry.createdAt)}</span>
                                             </div>
@@ -486,7 +564,7 @@ export default function Home() {
                         )}
                     </section>
 
-                    {suiteMode === 'main' ? (
+                    {suiteMode === 'main' || suiteMode === 'variance_testing' ? (
                         isRunning ? (
                             <div className="h-full flex flex-col items-center justify-center p-10 border border-blue-100 rounded-xl bg-gradient-to-br from-blue-50/60 to-indigo-50/60">
                                 <div className="h-12 w-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
@@ -786,7 +864,7 @@ function isRunHistoryEntry(value: unknown): value is RunHistoryEntry {
     return (
         typeof value.id === 'string'
         && typeof value.createdAt === 'string'
-        && (value.suiteMode === 'main' || value.suiteMode === 'forced_tests')
+        && (value.suiteMode === 'main' || value.suiteMode === 'variance_testing' || value.suiteMode === 'forced_tests')
         && Array.isArray(value.results)
         && 'summary' in value
         && isRecord(value.config)
@@ -811,7 +889,13 @@ function buildHistoryTitle(entry: RunHistoryEntry) {
         }
         return entry.config.model;
     }
-    return `${entry.suiteMode === 'main' ? 'Main Branch' : 'Forced Tests'} Run`;
+    if (entry.suiteMode === 'main') {
+        return 'Main Branch Run';
+    }
+    if (entry.suiteMode === 'variance_testing') {
+        return 'Variance Testing Run';
+    }
+    return 'Forced Tests Run';
 }
 
 function buildHistorySubtitle(entry: RunHistoryEntry) {

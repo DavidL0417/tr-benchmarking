@@ -17,6 +17,13 @@ export type ExperimentConfig = {
         adversarialText: boolean;
         labelNoise: number;
     };
+    invariance: {
+        enabled: boolean;
+        optionShuffles: number;
+        normalizeFormatting: boolean;
+        addIrrelevantContext: boolean;
+        seed: number;
+    };
     limit: number;
     subject: string;
     difficulty: string;
@@ -87,6 +94,19 @@ export function ConfigPanel({ config, setConfig, onRun, onCancel, isLoading, sub
             ...prev,
             controlled: {
                 ...prev.controlled,
+                [field]: value
+            }
+        }));
+    };
+
+    const handleInvarianceChange = <K extends keyof ExperimentConfig['invariance']>(
+        field: K,
+        value: ExperimentConfig['invariance'][K]
+    ) => {
+        setConfig(prev => ({
+            ...prev,
+            invariance: {
+                ...prev.invariance,
                 [field]: value
             }
         }));
@@ -256,6 +276,55 @@ export function ConfigPanel({ config, setConfig, onRun, onCancel, isLoading, sub
                 </div>
             </div>
 
+            <div className="space-y-4">
+                <label className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Invariance Testing</label>
+
+                <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">Enable invariance testing</span>
+                    <input
+                        type="checkbox"
+                        className="w-5 h-5 accent-blue-600"
+                        checked={config.invariance.enabled}
+                        onChange={(e) => handleInvarianceChange('enabled', e.target.checked)}
+                    />
+                </div>
+
+                <div className="space-y-2">
+                    <label className="text-sm text-gray-700">Option shuffles (0-5)</label>
+                    <input
+                        type="number"
+                        min={0}
+                        max={5}
+                        className="w-full p-2 border rounded-lg bg-gray-50 text-sm"
+                        value={config.invariance.optionShuffles}
+                        onChange={(e) => handleInvarianceChange('optionShuffles', Math.max(0, Math.min(5, Number(e.target.value) || 0)))}
+                        disabled={!config.invariance.enabled}
+                    />
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">Normalize formatting</span>
+                    <input
+                        type="checkbox"
+                        className="w-5 h-5 accent-blue-600"
+                        checked={config.invariance.normalizeFormatting}
+                        onChange={(e) => handleInvarianceChange('normalizeFormatting', e.target.checked)}
+                        disabled={!config.invariance.enabled}
+                    />
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">Add irrelevant context</span>
+                    <input
+                        type="checkbox"
+                        className="w-5 h-5 accent-blue-600"
+                        checked={config.invariance.addIrrelevantContext}
+                        onChange={(e) => handleInvarianceChange('addIrrelevantContext', e.target.checked)}
+                        disabled={!config.invariance.enabled}
+                    />
+                </div>
+            </div>
+
             <hr className="border-gray-100" />
 
             {/* Data Selection */}
@@ -339,7 +408,17 @@ export function ConfigPanel({ config, setConfig, onRun, onCancel, isLoading, sub
                                     type="number"
                                     className="w-full p-2 border rounded-lg bg-gray-50 text-sm"
                                     value={config.sampleSeed}
-                                    onChange={(e) => handleChange('sampleSeed', Number(e.target.value) || 0)}
+                                    onChange={(e) => {
+                                        const nextSeed = Number(e.target.value) || 0;
+                                        setConfig(prev => ({
+                                            ...prev,
+                                            sampleSeed: nextSeed,
+                                            invariance: {
+                                                ...prev.invariance,
+                                                seed: nextSeed
+                                            }
+                                        }));
+                                    }}
                                 />
                             </div>
                         )}
