@@ -239,6 +239,8 @@ export default function LshRunsPage() {
     const [savedGrades, setSavedGrades] = useState<SavedGradeRecord[]>([]);
     const [selectedSavedGradeIds, setSelectedSavedGradeIds] = useState<string[]>([]);
     const [savedGradesStatus, setSavedGradesStatus] = useState<string | null>(null);
+    const [comparisonGradeIds, setComparisonGradeIds] = useState<string[]>([]);
+    const [isComparisonVisible, setIsComparisonVisible] = useState(false);
     const [inspectorPanePercent, setInspectorPanePercent] = useState(28);
     const [isResizingPanes, setIsResizingPanes] = useState(false);
     const splitPaneRef = useRef<HTMLDivElement | null>(null);
@@ -400,6 +402,10 @@ export default function LshRunsPage() {
     }, [savedGrades]);
 
     useEffect(() => {
+        setComparisonGradeIds((previous) => previous.filter((id) => savedGrades.some((grade) => grade.id === id)));
+    }, [savedGrades]);
+
+    useEffect(() => {
         if (!savedGradesStatus) {
             return;
         }
@@ -556,18 +562,54 @@ export default function LshRunsPage() {
         [judgeProvider, judgeModel]
     );
     const mapPanePercent = 100 - inspectorPanePercent;
-    const selectedSavedGrades = useMemo(
-        () => savedGrades.filter((grade) => selectedSavedGradeIds.includes(grade.id)),
-        [savedGrades, selectedSavedGradeIds]
+    const comparedSavedGrades = useMemo(
+        () => savedGrades.filter((grade) => comparisonGradeIds.includes(grade.id)),
+        [savedGrades, comparisonGradeIds]
     );
     const judgeModelComparisonRows = useMemo(
-        () => buildJudgeModelComparisonRows(selectedSavedGrades),
-        [selectedSavedGrades]
+        () => buildJudgeModelComparisonRows(comparedSavedGrades),
+        [comparedSavedGrades]
     );
     const selectedPenaltyTrends = useMemo(
-        () => buildPenaltyTrendRows(selectedSavedGrades),
-        [selectedSavedGrades]
+        () => buildPenaltyTrendRows(comparedSavedGrades),
+        [comparedSavedGrades]
     );
+    const maxPenaltyTrendCount = useMemo(
+        () => Math.max(1, ...selectedPenaltyTrends.map((penalty) => penalty.count)),
+        [selectedPenaltyTrends]
+    );
+    const maxPenaltyScale = useMemo(
+        () => Math.max(5, ...judgeModelComparisonRows.map((row) => row.averagePenalty)),
+        [judgeModelComparisonRows]
+    );
+    const comparisonHighlights = useMemo(() => {
+        if (judgeModelComparisonRows.length === 0) {
+            return {
+                bestModel: null as JudgeModelComparisonRow | null,
+                strictestModel: null as JudgeModelComparisonRow | null,
+                consensusOutcome: null as string | null,
+                consensusReasoning: null as string | null,
+            };
+        }
+
+        let bestModel = judgeModelComparisonRows[0];
+        let strictestModel = judgeModelComparisonRows[0];
+        for (const row of judgeModelComparisonRows) {
+            if (row.averageFinalScore > bestModel.averageFinalScore) {
+                bestModel = row;
+            }
+            if (row.averagePenalty > strictestModel.averagePenalty) {
+                strictestModel = row;
+            }
+        }
+
+        return {
+            bestModel,
+            strictestModel,
+            consensusOutcome: findMostCommon(comparedSavedGrades.map((grade) => grade.grading.outcomes.bottomLineOutcome)),
+            consensusReasoning: findMostCommon(comparedSavedGrades.map((grade) => grade.grading.outcomes.reasoningAlignment)),
+        };
+    }, [comparedSavedGrades, judgeModelComparisonRows]);
     const allSavedGradesSelected = savedGrades.length > 0 && selectedSavedGradeIds.length === savedGrades.length;
 
     const handleJudgeCluster = async () => {
@@ -678,13 +720,33 @@ export default function LshRunsPage() {
             return;
         }
         setSavedGrades((previous) => previous.filter((grade) => !selectedSavedGradeIds.includes(grade.id)));
+        setComparisonGradeIds((previous) => previous.filter((id) => !selectedSavedGradeIds.includes(id)));
         setSavedGradesStatus('Selected saved grades removed.');
     };
 
     const clearAllSavedGrades = () => {
         setSavedGrades([]);
         setSelectedSavedGradeIds([]);
+        setComparisonGradeIds([]);
+        setIsComparisonVisible(false);
         setSavedGradesStatus('All saved grades cleared.');
+    };
+
+    const deleteSavedGrade = (gradeId: string) => {
+        setSavedGrades((previous) => previous.filter((grade) => grade.id !== gradeId));
+        setSelectedSavedGradeIds((previous) => previous.filter((id) => id !== gradeId));
+        setComparisonGradeIds((previous) => previous.filter((id) => id !== gradeId));
+        setSavedGradesStatus('Saved grade deleted.');
+    };
+
+    const handleCompareSelected = () => {
+        if (selectedSavedGradeIds.length === 0) {
+            setSavedGradesStatus('Select at least one saved grade to compare.');
+            return;
+        }
+        setComparisonGradeIds(selectedSavedGradeIds);
+        setIsComparisonVisible(true);
+        setSavedGradesStatus(`Comparing ${selectedSavedGradeIds.length} saved grade${selectedSavedGradeIds.length === 1 ? '' : 's'}.`);
     };
 
     return (
@@ -1242,6 +1304,234 @@ export default function LshRunsPage() {
                                                                     )}
                                                                 </div>
                                                             )}
+
+                                                            <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-2.5">
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Saved grades</p>
+                                                                    <p className="text-xs font-semibold text-slate-700">{savedGrades.length}</p>
+                                                                </div>
+
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={allSavedGradesSelected ? clearSavedGradeSelection : selectAllSavedGrades}
+                                                                        disabled={savedGrades.length === 0}
+                                                                        className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    >
+                                                                        {allSavedGradesSelected ? 'Clear selection' : 'Select all'}
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={handleCompareSelected}
+                                                                        disabled={selectedSavedGradeIds.length === 0}
+                                                                        className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    >
+                                                                        Compare selected ({selectedSavedGradeIds.length})
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={removeSelectedSavedGrades}
+                                                                        disabled={selectedSavedGradeIds.length === 0}
+                                                                        className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    >
+                                                                        Delete selected
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={clearAllSavedGrades}
+                                                                        disabled={savedGrades.length === 0}
+                                                                        className="rounded border border-red-300 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    >
+                                                                        Clear all
+                                                                    </button>
+                                                                </div>
+
+                                                                {savedGradesStatus && (
+                                                                    <p className="text-[11px] text-emerald-700">{savedGradesStatus}</p>
+                                                                )}
+
+                                                                {savedGrades.length === 0 ? (
+                                                                    <p className="text-xs text-slate-600">
+                                                                        No saved grades yet. Saved grades persist even when you do not compare.
+                                                                    </p>
+                                                                ) : (
+                                                                    <div className="overflow-x-auto">
+                                                                        <div className="flex gap-2 pb-1">
+                                                                            {savedGrades.map((grade) => {
+                                                                                const selected = selectedSavedGradeIds.includes(grade.id);
+                                                                                return (
+                                                                                    <div
+                                                                                        key={grade.id}
+                                                                                        className={`min-w-[210px] rounded border px-2 py-1.5 text-[11px] ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white'}`}
+                                                                                    >
+                                                                                        <label className="flex items-start gap-2">
+                                                                                            <input
+                                                                                                type="checkbox"
+                                                                                                checked={selected}
+                                                                                                onChange={() => toggleSavedGradeSelection(grade.id)}
+                                                                                                className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300"
+                                                                                            />
+                                                                                            <span className="min-w-0 flex-1">
+                                                                                                <span className="block truncate font-semibold text-slate-800">
+                                                                                                    {grade.judgeConfig.provider}/{grade.judgeConfig.model}
+                                                                                                </span>
+                                                                                                <span className="block text-slate-600">
+                                                                                                    {grade.grading.finalScore.toFixed(1)} - c{grade.clusterId}
+                                                                                                </span>
+                                                                                            </span>
+                                                                                        </label>
+                                                                                        <div className="mt-1 flex items-center justify-between gap-2">
+                                                                                            <span className="text-[10px] text-slate-500">{formatDateTime(grade.savedAt)}</span>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => deleteSavedGrade(grade.id)}
+                                                                                                className="rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-100"
+                                                                                            >
+                                                                                                Delete
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {isComparisonVisible && (
+                                                                    <div className="space-y-3 rounded-xl border border-slate-200 bg-[linear-gradient(165deg,#ffffff_0%,#f8fbff_55%,#eef6ff_100%)] p-3 shadow-sm">
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-600">
+                                                                                Comparison results ({comparedSavedGrades.length})
+                                                                            </p>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => setIsComparisonVisible(false)}
+                                                                                className="rounded border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200"
+                                                                            >
+                                                                                Hide
+                                                                            </button>
+                                                                        </div>
+
+                                                                        {judgeModelComparisonRows.length === 0 ? (
+                                                                            <p className="text-xs text-slate-600">No comparable grades selected.</p>
+                                                                        ) : (
+                                                                            <div className="space-y-3">
+                                                                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                                                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2">
+                                                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700">Highest average score</p>
+                                                                                        <p className="mt-0.5 text-xs font-bold text-emerald-900">
+                                                                                            {comparisonHighlights.bestModel?.provider}/{comparisonHighlights.bestModel?.model}
+                                                                                        </p>
+                                                                                        <p className="text-sm font-extrabold text-emerald-900">
+                                                                                            {comparisonHighlights.bestModel?.averageFinalScore.toFixed(2) ?? '0.00'}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                    <div className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2">
+                                                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-700">Highest average penalties</p>
+                                                                                        <p className="mt-0.5 text-xs font-bold text-rose-900">
+                                                                                            {comparisonHighlights.strictestModel?.provider}/{comparisonHighlights.strictestModel?.model}
+                                                                                        </p>
+                                                                                        <p className="text-sm font-extrabold text-rose-900">
+                                                                                            {comparisonHighlights.strictestModel?.averagePenalty.toFixed(2) ?? '0.00'}
+                                                                                        </p>
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[11px]">
+                                                                                    <p className="font-semibold text-slate-700">Selection consensus</p>
+                                                                                    <div className="mt-1 flex flex-wrap gap-1.5">
+                                                                                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                                                                            Outcome: {comparisonHighlights.consensusOutcome || 'N/A'}
+                                                                                        </span>
+                                                                                        <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">
+                                                                                            Reasoning: {comparisonHighlights.consensusReasoning || 'N/A'}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <div className="space-y-2">
+                                                                                    {judgeModelComparisonRows.map((row) => (
+                                                                                        <div key={row.key} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2.5">
+                                                                                            <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                                                                                <p className="text-[11px] font-bold text-slate-800">
+                                                                                                    {row.provider}/{row.model}
+                                                                                                </p>
+                                                                                                <span
+                                                                                                    className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                                                                                                        row.provider === 'openai'
+                                                                                                            ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                                                                                            : row.provider === 'anthropic'
+                                                                                                                ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                                                                                                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                                                                    }`}
+                                                                                                >
+                                                                                                    N={row.sampleCount}
+                                                                                                </span>
+                                                                                            </div>
+
+                                                                                            <div className="mt-2 space-y-1.5">
+                                                                                                <div>
+                                                                                                    <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600">
+                                                                                                        <span>Avg final score</span>
+                                                                                                        <span>{row.averageFinalScore.toFixed(2)}</span>
+                                                                                                    </div>
+                                                                                                    <div className="mt-0.5 h-2 overflow-hidden rounded-full bg-slate-200">
+                                                                                                        <div
+                                                                                                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500"
+                                                                                                            style={{ width: `${clampNumber(row.averageFinalScore, 0, 100)}%` }}
+                                                                                                        />
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <div>
+                                                                                                    <div className="flex items-center justify-between text-[10px] font-semibold text-slate-600">
+                                                                                                        <span>Avg penalties</span>
+                                                                                                        <span>{row.averagePenalty.toFixed(2)}</span>
+                                                                                                    </div>
+                                                                                                    <div className="mt-0.5 h-2 overflow-hidden rounded-full bg-slate-200">
+                                                                                                        <div
+                                                                                                            className="h-full rounded-full bg-gradient-to-r from-rose-500 to-orange-500"
+                                                                                                            style={{ width: `${clampNumber((row.averagePenalty / maxPenaltyScale) * 100, 0, 100)}%` }}
+                                                                                                        />
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            <div className="mt-2 flex flex-wrap gap-1">
+                                                                                                <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-700">
+                                                                                                    {row.commonOutcome}
+                                                                                                </span>
+                                                                                                <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-700">
+                                                                                                    {row.commonReasoning}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {selectedPenaltyTrends.length > 0 && (
+                                                                            <div className="rounded-lg border border-slate-200 bg-white px-2.5 py-2">
+                                                                                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">Frequent penalties</p>
+                                                                                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                                                                    {selectedPenaltyTrends.map((penalty) => (
+                                                                                        <span
+                                                                                            key={penalty.key}
+                                                                                            className="rounded-full border px-2 py-0.5 text-[10px] font-semibold text-slate-700"
+                                                                                            style={{
+                                                                                                borderColor: `rgba(148, 163, 184, ${0.3 + (penalty.count / maxPenaltyTrendCount) * 0.5})`,
+                                                                                                backgroundColor: `rgba(15, 23, 42, ${0.04 + (penalty.count / maxPenaltyTrendCount) * 0.08})`,
+                                                                                            }}
+                                                                                        >
+                                                                                            {penalty.label}: {penalty.count}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1282,139 +1572,6 @@ export default function LshRunsPage() {
                                     </div>
                                 </section>
 
-                                <section className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-sm backdrop-blur sm:p-5">
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div>
-                                            <h3 className="text-base font-bold text-slate-900">Saved Grade Comparisons</h3>
-                                            <p className="text-sm text-slate-600">
-                                                Save only the grades you want to keep. Unsaved grades are temporary.
-                                            </p>
-                                        </div>
-                                        <span className="rounded bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                                            Saved: {savedGrades.length}
-                                        </span>
-                                    </div>
-
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={allSavedGradesSelected ? clearSavedGradeSelection : selectAllSavedGrades}
-                                            disabled={savedGrades.length === 0}
-                                            className="rounded-md border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                            {allSavedGradesSelected ? 'Clear selection' : 'Select all saved'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={removeSelectedSavedGrades}
-                                            disabled={selectedSavedGradeIds.length === 0}
-                                            className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                            Remove selected
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={clearAllSavedGrades}
-                                            disabled={savedGrades.length === 0}
-                                            className="rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                            Clear all saved
-                                        </button>
-                                    </div>
-                                    {savedGradesStatus && (
-                                        <p className="mt-2 text-xs text-emerald-700">{savedGradesStatus}</p>
-                                    )}
-
-                                    {savedGrades.length === 0 ? (
-                                        <p className="mt-3 text-sm text-slate-600">No saved grades yet. Grade a cluster, then click Save grade.</p>
-                                    ) : (
-                                        <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Saved grade snapshots</p>
-                                                <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
-                                                    {savedGrades.map((grade) => {
-                                                        const selected = selectedSavedGradeIds.includes(grade.id);
-                                                        return (
-                                                            <label
-                                                                key={grade.id}
-                                                                className={`flex cursor-pointer items-start gap-2 rounded border px-2 py-2 text-xs ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white'}`}
-                                                            >
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={selected}
-                                                                    onChange={() => toggleSavedGradeSelection(grade.id)}
-                                                                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
-                                                                />
-                                                                <span className="min-w-0 flex-1">
-                                                                    <span className="block font-semibold text-slate-800">
-                                                                        {grade.judgeConfig.provider}/{grade.judgeConfig.model}
-                                                                    </span>
-                                                                    <span className="block text-slate-600">
-                                                                        Score {grade.grading.finalScore.toFixed(2)} - {grade.runFile} - cluster {grade.clusterId}
-                                                                    </span>
-                                                                    <span className="block text-slate-500">
-                                                                        Saved {formatDateTime(grade.savedAt)}
-                                                                    </span>
-                                                                </span>
-                                                            </label>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-3">
-                                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Tendencies by judge model</p>
-                                                    {selectedSavedGrades.length === 0 ? (
-                                                        <p className="mt-2 text-xs text-slate-600">Select saved grades to compare.</p>
-                                                    ) : (
-                                                        <div className="mt-2 overflow-x-auto">
-                                                            <table className="w-full min-w-[520px] text-left text-[11px]">
-                                                                <thead>
-                                                                    <tr className="text-slate-500">
-                                                                        <th className="px-2 py-1 font-semibold">Judge model</th>
-                                                                        <th className="px-2 py-1 font-semibold">N</th>
-                                                                        <th className="px-2 py-1 font-semibold">Avg final</th>
-                                                                        <th className="px-2 py-1 font-semibold">Avg penalties</th>
-                                                                        <th className="px-2 py-1 font-semibold">Common outcome</th>
-                                                                        <th className="px-2 py-1 font-semibold">Common reasoning</th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody>
-                                                                    {judgeModelComparisonRows.map((row) => (
-                                                                        <tr key={row.key} className="border-t border-slate-200 text-slate-700">
-                                                                            <td className="px-2 py-1.5 font-semibold">{row.provider}/{row.model}</td>
-                                                                            <td className="px-2 py-1.5">{row.sampleCount}</td>
-                                                                            <td className="px-2 py-1.5">{row.averageFinalScore.toFixed(2)}</td>
-                                                                            <td className="px-2 py-1.5">{row.averagePenalty.toFixed(2)}</td>
-                                                                            <td className="px-2 py-1.5">{row.commonOutcome}</td>
-                                                                            <td className="px-2 py-1.5">{row.commonReasoning}</td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Frequent penalties in selection</p>
-                                                    {selectedPenaltyTrends.length === 0 ? (
-                                                        <p className="mt-2 text-xs text-slate-600">No penalties recorded in selected saved grades.</p>
-                                                    ) : (
-                                                        <div className="mt-2 space-y-1">
-                                                            {selectedPenaltyTrends.map((penalty) => (
-                                                                <p key={penalty.key} className="text-xs text-slate-700">
-                                                                    {penalty.label}: {penalty.count}
-                                                                </p>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </section>
                             </div>
                         )}
                     </section>
