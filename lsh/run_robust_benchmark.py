@@ -205,7 +205,9 @@ async def main():
             "metadata": {
                 "timestamp": TIMESTAMP,
                 "method": "density_umap_hdbscan",
-                "question": "Woman Farmland",
+                "umap_dims": 10,
+                "min_cluster_size": 5,
+                "question": TEST_QUESTION,
                 "total_items": len(valid_data),
                 "num_clusters": results['num_clusters'],
                 "failures": fail_counts if failures else {}
